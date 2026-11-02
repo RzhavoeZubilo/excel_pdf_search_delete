@@ -92,18 +92,35 @@
 
   /* ============================ Диапазоны ============================ */
 
-  // Принимает: "" (все), "485", "485-500", "485-", а также "с 485" / "от 485".
-  function parseRange(str, min, max) {
+  // Принимает пустую строку (все коды) либо список через запятую, где каждый
+  // элемент — число N (с №N до конца), диапазон N-M, открытый диапазон N-
+  // или «с/от N». Возвращает массив {from, to} или null при непонятном вводе.
+  function parseRanges(str, min, max) {
     var s = String(str == null ? '' : str).trim().toLowerCase();
-    s = s.replace(/^(с|от)\s+/, '').replace(/[–—]/g, '-');
-    if (!s) return { from: min, to: max };
-    var m = s.match(/^([0-9]+)\s*-\s*([0-9]+)$/);
-    if (m) return { from: parseInt(m[1], 10), to: parseInt(m[2], 10) };
-    m = s.match(/^([0-9]+)\s*-\s*$/);
-    if (m) return { from: parseInt(m[1], 10), to: max };
-    m = s.match(/^([0-9]+)$/);
-    if (m) return { from: parseInt(m[1], 10), to: max };
-    return null;
+    if (!s) return [{ from: min, to: max }];
+    var ranges = [];
+    var parts = s.split(',');
+    for (var i = 0; i < parts.length; i++) {
+      var t = parts[i].trim().replace(/^(с|от)\s+/, '').replace(/[–—]/g, '-');
+      if (!t) continue;
+      var m = t.match(/^([0-9]+)\s*-\s*([0-9]+)$/);
+      if (m) {
+        var a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+        if (a > b) return null;
+        ranges.push({ from: a, to: b });
+        continue;
+      }
+      m = t.match(/^([0-9]+)\s*-\s*$/);
+      if (m) { ranges.push({ from: parseInt(m[1], 10), to: max }); continue; }
+      m = t.match(/^([0-9]+)$/);
+      if (m) { ranges.push({ from: parseInt(m[1], 10), to: max }); continue; }
+      return null;
+    }
+    return ranges.length ? ranges : null;
+  }
+
+  function formatRange(r) {
+    return r.to > r.from ? '№' + r.from + '–' + r.to : '№' + r.from;
   }
 
   /* ============================ Excel ============================ */
@@ -270,15 +287,55 @@
     refreshAll();
   }
 
-  // Коды выбранного диапазона для одного PDF
+  function closeAllHelp() {
+    document.querySelectorAll('.help-pop').forEach(function (p) { p.hidden = true; });
+    document.querySelectorAll('.help-icon.open').forEach(function (i) { i.classList.remove('open'); });
+  }
+
+  // Иконка «?» с выпадающей подсказкой по формату ввода диапазонов
+  function buildHelpIcon() {
+    var wrap = document.createElement('span');
+    wrap.className = 'help-wrap';
+    var icon = document.createElement('button');
+    icon.type = 'button';
+    icon.className = 'help-icon';
+    icon.setAttribute('aria-label', 'Подсказка по формату ввода');
+    icon.textContent = '?';
+    var pop = document.createElement('div');
+    pop.className = 'help-pop';
+    pop.hidden = true;
+    pop.innerHTML =
+      '<b>Формат ввода</b>' +
+      '<span class="hp-row">пусто — <i>все коды из PDF</i></span>' +
+      '<span class="hp-row"><b>485</b> — с №485 до последнего</span>' +
+      '<span class="hp-row"><b>390-400</b> — диапазон номеров</span>' +
+      '<span class="hp-row"><b>485, 390-400</b> — несколько значений через запятую</span>' +
+      '<span class="hp-row"><b>485-</b> — то же, что 485</span>' +
+      '<span class="hp-row">Можно писать «с 485» или «от 485»</span>';
+    icon.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var willOpen = pop.hidden;
+      closeAllHelp();
+      pop.hidden = !willOpen;
+      if (willOpen) icon.classList.add('open');
+    });
+    pop.addEventListener('click', function (e) { e.stopPropagation(); });
+    wrap.appendChild(icon);
+    wrap.appendChild(pop);
+    return wrap;
+  }
+
+  // Коды, попадающие в указанные диапазоны, для одного PDF
   function selectedCodes(pdf) {
     var input = document.querySelector('input[data-range-for="' + pdf.id + '"]');
-    var range = parseRange(input ? input.value : '', pdf.min, pdf.max);
-    if (!range) return { range: null, codes: [] };
+    var ranges = parseRanges(input ? input.value : '', pdf.min, pdf.max);
+    if (!ranges) return { ranges: null, codes: [] };
     var codes = pdf.entries
-      .filter(function (e) { return e.num >= range.from && e.num <= range.to; })
+      .filter(function (e) {
+        return ranges.some(function (r) { return e.num >= r.from && e.num <= r.to; });
+      })
       .map(function (e) { return e.code; });
-    return { range: range, codes: codes };
+    return { ranges: ranges, codes: codes };
   }
 
   function renderPdfList() {
@@ -324,10 +381,11 @@
         var input = document.createElement('input');
         input.type = 'text';
         input.id = 'range-' + pdf.id;
-        input.placeholder = 'все (примеры: 485 или 456-500)';
+        input.placeholder = 'все (примеры: 485, 390-400, 485)';
         input.setAttribute('data-range-for', pdf.id);
         input.addEventListener('input', refreshAll);
         row.appendChild(label);
+        row.appendChild(buildHelpIcon());
         row.appendChild(input);
         div.appendChild(row);
 
@@ -353,18 +411,16 @@
       var countEl = document.querySelector('[data-count-for="' + pdf.id + '"]');
       if (!countEl || pdf.loading || pdf.error || !pdf.entries.length) return;
       var sel = selectedCodes(pdf);
-      if (!sel.range) {
+      if (!sel.ranges) {
         countEl.className = 'pdf-count err';
-        countEl.textContent = 'Непонятный диапазон. Примеры: 485 · 485-500 · 485-';
+        countEl.textContent = 'Непонятный диапазон. Примеры: 485 · 456-500 · 485, 390-400';
         return;
       }
       var found = sel.codes.filter(function (c) { return state.excelCodes && state.excelCodes.has(c); });
       var missing = sel.codes.length - found.length;
       countEl.className = 'pdf-count ' + (missing ? 'warn' : 'ok');
       countEl.textContent = 'Будет удалено кодов: ' + found.length +
-        (sel.range.from !== sel.range.to
-          ? ' (№' + sel.range.from + '–№' + sel.range.to + ')'
-          : ' (№' + sel.range.from + ')') +
+        ' (' + sel.ranges.map(formatRange).join(', ') + ')' +
         (missing ? ' · не найдено в Excel: ' + missing : '');
       totalSelected += sel.codes.length;
       totalFound += found.length;
@@ -456,6 +512,10 @@
     setupDropzone('excel-drop', 'excel-input', setExcelFile);
     setupDropzone('pdf-drop', 'pdf-input', addPdfFiles);
     $('process-btn').addEventListener('click', processAndDownload);
+    document.addEventListener('click', closeAllHelp);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeAllHelp();
+    });
   }
 
   if (typeof document !== 'undefined') init();
@@ -466,7 +526,8 @@
       groupIntoLines: groupIntoLines,
       extractCodeAndNumber: extractCodeAndNumber,
       parsePdf: parsePdf,
-      parseRange: parseRange,
+      parseRanges: parseRanges,
+      formatRange: formatRange,
       pickWorksheet: pickWorksheet,
       findCodeColumn: findCodeColumn,
       collectExcelCodes: collectExcelCodes,
