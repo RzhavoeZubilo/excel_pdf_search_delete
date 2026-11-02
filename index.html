@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Удаление кодов из Excel по PDF</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%234f46e5'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='Arial'%3E%E2%9C%82%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/pdf.min.js"></script>
+  <script src="vendor/exceljs.min.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>Удаление кодов из Excel по PDF</h1>
+      <p class="subtitle">
+        Загрузите Excel и PDF с QR-этикетками, укажите номера — получите Excel без удалённых строк.
+        Все вычисления выполняются локально в браузере: файлы никуда не отправляются.
+      </p>
+    </header>
+
+    <!-- Шаг 1: Excel -->
+    <section class="card" id="excel-card">
+      <div class="step-title"><span class="step-num">1</span> Excel-файл</div>
+      <div class="dropzone" id="excel-drop" tabindex="0">
+        <input type="file" id="excel-input" accept=".xlsx" hidden>
+        <div class="dz-icon">📄</div>
+        <div class="dz-text"><strong>Выберите</strong> или перетащите сюда .xlsx файл</div>
+      </div>
+      <div class="file-info" id="excel-info" hidden></div>
+    </section>
+
+    <!-- Шаг 2: PDF -->
+    <section class="card" id="pdf-card">
+      <div class="step-title"><span class="step-num">2</span> PDF-файлы с кодами</div>
+      <div class="dropzone compact" id="pdf-drop" tabindex="0">
+        <input type="file" id="pdf-input" accept=".pdf" multiple hidden>
+        <div class="dz-text"><strong>Выберите</strong> или перетащите один или несколько PDF</div>
+      </div>
+      <div id="pdf-list"></div>
+    </section>
+
+    <!-- Шаг 3: Результат -->
+    <section class="card">
+      <div class="step-title"><span class="step-num">3</span> Результат</div>
+      <div class="summary" id="summary">
+        <div class="summary-row"><span>Кодов к удалению из PDF</span><b id="sum-selected">0</b></div>
+        <div class="summary-row"><span>Найдены в Excel (строки будут удалены)</span><b id="sum-found">0</b></div>
+        <div class="summary-row"><span>Не найдены в Excel</span><b id="sum-missing">0</b></div>
+      </div>
+      <button id="process-btn" class="primary" disabled>Удалить строки и скачать Excel</button>
+      <div class="result" id="result" hidden></div>
+      <div class="error" id="error" hidden></div>
+    </section>
+
+    <footer>
+      Как это работает: из каждой страницы PDF извлекаются номер этикетки (№) и код под QR-кодом
+      (строка, начинающаяся с 01… и продолжение, начинающееся с 21…). Код ищется в столбце «Код»
+      загруженного Excel, и строки с найденными кодами удаляются. Форматирование файла сохраняется.
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
